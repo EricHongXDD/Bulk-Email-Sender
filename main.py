@@ -9,6 +9,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
 
 # 自定义多线程类Start
 class Start(QRunnable):
@@ -17,6 +18,10 @@ class Start(QRunnable):
         self.func = func
 
     def run(self):
+        # # 检查线程是否需要终止
+        # global confirm_var
+        # if (confirm_var == 1):
+        #     return
         self.func()
 
 class LoginClass(QMainWindow, Ui_MainWindow):
@@ -28,6 +33,7 @@ class LoginClass(QMainWindow, Ui_MainWindow):
         self.pushButton.clicked.connect(self.start_on_push_button_clicked)
         self.pushButton_2.clicked.connect(self.save_config)
         self.pushButton_3.clicked.connect(self.load_config)
+        self.pushButton_4.clicked.connect(self.select_file)
         # 设置显示框编辑权限，禁止双击编辑数据值，选择
         self.listView.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.listView.setSelectionMode(QAbstractItemView.NoSelection)
@@ -43,11 +49,24 @@ class LoginClass(QMainWindow, Ui_MainWindow):
         self.port = 25
         self.body_content = """ """
         self.subject = """ """
+        self.comboBox.addItem("普通文本")
+        self.comboBox.addItem("HTML")
+        self.index = 0
+        self.newmessage = None
+        self.filename = ''
+        self.file_path = ''
         # 配置文件
         # 初始化配置文件对象
         self.config = configparser.ConfigParser()
 
     def start_on_push_button_clicked(self):
+        # file_path, _ = QFileDialog.getOpenFileName(None, '打开文件', '',
+        #                                            'Image files (*.jpg *.gif *.png);;All files (*.*)')
+        # file_path, _ = QFileDialog.getSaveFileName(None, '保存配置文件', '',
+        #                                            'ini files (*.ini)')
+
+        # print(file_path)
+
         self.red_light()
         self.progressBar.setValue(0)
         # 获取lineEdit的文本值
@@ -56,14 +75,20 @@ class LoginClass(QMainWindow, Ui_MainWindow):
         self.mail_pass = self.lineEdit_3.text()
         self.sender = self.lineEdit_4.text()
         self.subject = self.lineEdit_5.text()
-        self.port = int(self.lineEdit_6.text())
+        self.port = self.lineEdit_6.text()
         self.body_content = self.textEdit.toPlainText()
         self.email_string = self.textEdit_2.toPlainText()
+        self.index = self.comboBox.currentIndex()
+        #print(self.index)
+        #print(self.port)
 
-        if(self.mail_host == '' or self.mail_user == '' or self.mail_pass == '' or self.sender == '' or self.subject == '' or self.body_content == '' or self.email_string == '' or self.port == None):
+        if(self.mail_host == '' or self.mail_user == '' or self.mail_pass == '' or self.sender == '' or self.subject == '' or self.body_content == '' or self.email_string == '' or self.port == ''):
             select = QMessageBox.warning(self, "错误", "存在未填写的信息，或信息为空", QMessageBox.Yes,
                                          QMessageBox.Yes)
         else:
+            if (self.file_path != ''):
+                self.add_string_to_listView("[I]有附件：" + self.filename + "路径：" + self.file_path)
+            self.port = int(self.port)
             # 创建多线程，并将value传递给time_consuming_task方法
             self.green_light()
             worker = Start(self.start_thread)
@@ -79,10 +104,24 @@ class LoginClass(QMainWindow, Ui_MainWindow):
         i = 1
         # 逐个发送邮件
         for email in self.email_addresses:
-            message = MIMEText(self.body_content, 'plain', 'utf-8')
-            message['From'] = self.mail_user
-            message['To'] = str(email)
-            message['Subject'] = Header(self.subject, 'utf-8')
+            message = MIMEMultipart()
+            if (self.index == 1):
+                #普通文本
+                message.attach(MIMEText(self.body_content, 'html', 'utf-8'))
+            else:
+                message.attach(MIMEText(self.body_content, 'plain', 'utf-8'))
+            if (self.file_path != ''):
+                # print("有附件")
+                # self.add_string_to_listView("[I]有附件：" + self.filename + "路径：" + self.file_path)
+                # 再添加附件，这里的文件名可以有中文，但下面第三行的filename不可以为中文
+                attl = MIMEText(open(self.file_path, 'rb').read(),'base64', 'utf-8')
+                attl["Content-Type"] = 'application/octet-stream'
+                # 下面的filename是在邮件中显示的名字及后缀名，名字可以不同，但不可以为中文!!
+                attl["Content-Disposition"] = 'attachment; filename="'+self.filename+'" '
+                message.attach(attl)
+            message['From'] = Header(self.mail_user)
+            message['To'] = Header(str(email))
+            message['Subject'] = Header(self.subject)
             smtpObj = smtplib.SMTP(self.mail_host, self.port)
             smtpObj.connect(self.mail_host, self.port)
             # set_debuglevel(1)时SMTP 对象会打印与邮件服务器的交互过程，包括与服务器的命令和响应，以及交换的数据内容，用于debug
@@ -97,6 +136,13 @@ class LoginClass(QMainWindow, Ui_MainWindow):
             self.progressBar.setValue(i)
             i += 1
         print("所有邮件发送完成")
+        # i = 96
+        # while i < 100:
+        #     body_content = self.textEdit.toPlainText()
+        #     print(body_content)
+        #     self.progressBar.setValue(i)  # 当前进度
+        #     time.sleep(1)
+        #     i += 1
         self.red_light()
 
     # 绿灯
@@ -151,6 +197,15 @@ class LoginClass(QMainWindow, Ui_MainWindow):
                 config.write(configfile)
                 self.add_string_to_listView("[I]发送账号" + self.mail_user + "配置保存完成")
 
+    def select_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(None, '选择附件(路径尽量不要有中文)', '',
+                                                   '(*.*)')
+        self.textBrowser.setText(str(file_path))
+        # 替换为单反斜杠
+        self.file_path = str(file_path).replace("/", "\\").replace(":", ":")
+        self.filename = os.path.basename(file_path)
+        print(self.filename)
+
     # 加载配置文件中的值
     def load_config(self):
         file_path, _ = QFileDialog.getOpenFileName(None, '打开配置文件', '',
@@ -182,6 +237,6 @@ class LoginClass(QMainWindow, Ui_MainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    MainWindow1 = LoginClass()
+    MainWindow1 = LoginClass()  # Create an instance of MyMainClass
     MainWindow1.show()
     sys.exit(app.exec_())
