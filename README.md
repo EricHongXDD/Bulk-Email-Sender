@@ -2,6 +2,9 @@
  Batch sending emails to individual recipients with GUI interface.批量发送单收件人邮件，带有GUI界面。
 
  给朋友写的小功能，顺带着发上来
+
+ # Update
+ V2.0 增加2个新功能，支持发送HTML格式文本，支持添加附件
  
  # Usage
  mail_host：SMTP服务器地址
